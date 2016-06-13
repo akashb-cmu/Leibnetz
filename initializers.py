@@ -16,7 +16,11 @@ This package implements various different initialization schemes such as:
 11. Zeros
 12. Ones
 
-This package also contains a function that takes a string argument and returns the appropriate initializer
+For all initializers other than Identity, Zeros and Ones, a numpy.random.RandomState(<seed>) can optionally be passed as
+an argument to recreate initializations in case results need to be reproduced.
+
+This module also contains a function that takes a string argument and returns the appropriate initialized value,to avoid
+having if-else blocks to do so in every layer that allows choice of initializer.
 """
 
 """
