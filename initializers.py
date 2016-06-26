@@ -38,13 +38,23 @@ def get_fans(dim_tuple, dim_ordering="th"):
         # with order specified as 'th' or 'tf' respectively
         # Remaining dimensions specify the (num input feature maps, filter height, filter width (, filter_depth)).
         # Thus the number of parameters is their product.
-        if dim_ordering == "th":
+        # For 2D convolution, the dimensions are (nb_filter, stack_size, nb_row, nb_col)
+        # where stack_size is the number of input feature maps, nb_row and nb_col are the filter width and height resp.
+        # and NOT the input image width and height.
+        if dim_ordering == "th": # Corresponds to theano, where the dims are [nb_filter, stack_size, nb_row, nb_col]
             filter_size = np.prod(dim_tuple[2:])
-            fan_in = dim_tuple[1] * filter_size # For each filter, we have a filter of the filter_size which processes
-            # an input section of that filter_size
-            fan_out = dim_tuple[0] * filter_size # For each input channel, output of the filter size is generated
-            # Thus the total number of weights involved is n_filters * n_input_channels * ( filter_size )^2
-        elif dim_ordering == "tf":
+            fan_in = dim_tuple[1] * filter_size # Each output node processes a region of size=(num_channels*filter_size)
+            # i.e. connectivity is local in space (filter_size) but full in depth (num_channels)
+            fan_out = dim_tuple[0] * filter_size
+            # Dimension of output filter neurons is determined by:
+            # (input_image_dim - filter_size_dim + 2*padding_dim)/stride + 1
+            # Tot number of output neurons is then dim_1 * dim_2 < * dim_3 > * num_filters
+            # Each of these neurons is connected to fan_in sized region in the input. Weights of output neurons at
+            # different depths are different but weights of neurons at same depth are shared. Thus, we only need:
+            # num_filters * filter_size number of parameters ( + num_filters biases which are initialized separately)
+            # The fan_out thus represents the number of unique parameters to be learned.
+        elif dim_ordering == "tf": # Corresponds to tensorflow, where the dims are [nb_row, nb_col, stack_size,
+            # nb_filter]
             print("Initializer: get_fans in tf mode for 4 or 5 dimensions deviates from Keras implementation. Please recheck implementation")
             filter_size = np.prod(dim_tuple[:-2])
             fan_in = dim_tuple[-2] * filter_size
@@ -144,7 +154,13 @@ def one_param_init(name, dim_tuple, scale=1.0, **kwargs):
 
 init_selector = {fun: globals()[fun] for fun in filter(lambda x: x.endswith("_param_init"), globals())}
 
-def get_init_value(init_type, name, dim_tuple, **kwargs):
-    assert init_type in ["uniform_param_init", "normal_param_init", "lecun_uniform_param_init", "glorot_uniform_param_init", "glorot_normal_param_init", "he_uniform_param_init", "he_normal_param_init",
-                         "orthogonal_param_init", "identity_param_init", "zero_param_init", "one_param_init"], "Invalid initialization specified"
-    return(init_selector[init_type](name, dim_tuple, **kwargs))
+# def get_init_value(init_type, name, dim_tuple, **kwargs):
+#     init_type += "_param_init"
+#     assert init_type in init_selector.keys(), "Invalid initialization specified: " + init_type
+#     return(init_selector[init_type](name, dim_tuple, **kwargs))
+
+def get_init_value(init_type, name, dim_tuple, dim_ordering='th', rnd=None, scale=0.1, **kwargs):
+    init_type += "_param_init"
+    assert init_type in init_selector.keys(), "Invalid initialization specified: " + init_type
+    init_args = {'name':name, 'dim_tuple':dim_tuple, 'dim_ordering':dim_ordering, 'rnd':rnd, 'scale':scale}
+    return(init_selector[init_type](name=name, dim_tuple=dim_tuple, **kwargs))

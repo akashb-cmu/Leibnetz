@@ -4,9 +4,9 @@ from numpy.random import RandomState
 import initializers
 
 def initializers_selector_check():
-    for init_type in ["uniform_param_init", "normal_param_init", "lecun_uniform_param_init", "glorot_uniform_param_init",
-                  "glorot_normal_param_init", "he_uniform_param_init", "he_normal_param_init",
-                  "orthogonal_param_init", "identity_param_init", "zero_param_init", "one_param_init"]:
+    for init_type in ["uniform", "normal", "lecun_uniform", "glorot_uniform",
+                  "glorot_normal", "he_uniform", "he_normal",
+                  "orthogonal", "identity", "zero", "one"]:
         args_dict = {"name": init_type + "_dummy", "dim_tuple": (3,3), "rnd": np.random}
         print(init_type)
         init_value = initializers.get_init_value(init_type, **args_dict)
@@ -16,7 +16,7 @@ def initializers_selector_check():
 
 def seed_set_check():
     rnd = RandomState(0)
-    init_type = "uniform_param_init"
+    init_type = "uniform"
     args_dict = {"name": init_type + "_dummy", "dim_tuple": (3,3), "rnd": rnd}
     print(init_type)
     init_value = initializers.get_init_value(init_type, **args_dict)
@@ -37,6 +37,16 @@ def seed_set_check():
     print(init_value.name)
     print(init_value.get_value())
 
+def bias_initialization():
+    rnd = RandomState()
+    init_type = "uniform"
+    args_dict = {"name": init_type + "_dummy_bias", "dim_tuple": (10,), "rnd": rnd}
+    print(init_type)
+    init_value = initializers.get_init_value(init_type, **args_dict)
+    print(init_value.name)
+    print(init_value.get_value())
+
 
 initializers_selector_check()
 seed_set_check()
+bias_initialization()
