@@ -9,9 +9,13 @@ import constraints
 import numpy as np
 from model import Component
 
+# In order for any type of layer to be used in a model, it MUST subclass from Component, since doing so ensures the
+# layer implements all functionalities required to build, compile, train and test a model.
 
 class Layer(Component):
     """
+    THIS DOCUMENTATION IS OUTDATED! PLEASE UPDATE!
+
     This is an abstract class that must be inherited to implement a new layer. It encapsulates the following data and
     methods.
 
@@ -69,7 +73,8 @@ class Layer(Component):
         self.input_dim = kwargs["input_dim"]
         self.output_dim = kwargs["output_dim"]
         self.input_dtype = kwargs.get("input_dtype", Tconfig.floatX)
-        self.output_dtype = Tconfig.floatX
+        # self.output_dtype = Tconfig.floatX
+        self.output_dtype = kwargs.get("output_dtype",Tconfig.floatX)
         # self.trainable_params = {} # Must be specified by child class implementation
         # self.trainable_param_names = [] # Must be specified by child class implementation
         self.fixed_params = {} # Must be specified by child class implementation
@@ -79,11 +84,13 @@ class Layer(Component):
         self.activation = kwargs.get("activation", None)
         self.init_type = kwargs.get("init_type", "glorot_uniform")
         self.learning_rate = kwargs.get("learning_rate", 0.01)
-        self.leak_slope = kwargs.get("leak_slope", 0.1)
+        self.leak_slope = kwargs.get("leak_slope", 0.01)
         self.rnd_seed = kwargs.get("rnd_seed", None)
-        # self.clip_threshold = kwargs.get("clip_threshold", None)
-
+        self.clip_threshold = kwargs.get("clip_threshold", None)
         self.trainable = kwargs.get("trainable", True)
+        self.rnd = None
+        # self.trainable = kwargs.get("trainable", True) # May be relevant for something like a fixed embedding layer
+        # which need not be trainable but still has some parameters (albeit fixed parameters)
 
     # link_to_inputs assumes a single path from input to output.
 
@@ -98,6 +105,8 @@ class Layer(Component):
         # Takes a provided input tensor and applies current layer's logic on top of it. Differs from link_to_inputs in
         # that it doesn't place recursive calls and doesn't expect all input layers (or even the current layer) to have
         # already fixed inputs.
+        assert isinstance(input, theano.tensor.TensorVariable), "Input tensor must be a theano tensor " \
+                                                                        "variable (theano.tensor.TensorVariable)"
         if is_train:
             return (self.get_train_output(input))
         else:
@@ -174,7 +183,8 @@ class DenseLayer(Layer):
     - clip_threshold
     """
 
-    def __init__(self, name, output_dim, input_dim, activation='linear', init_type='glorot_uniform',
+    def __init__(self, name, output_dim, input_dim, input_dtype=Tconfig.floatX, output_dtype=Tconfig.floatX,
+                 activation='linear', init_type='glorot_uniform',
                  learning_rate=0.01, leak_slope=0.01, clip_threshold=None, weights=None, biases=None, W_regularizer=None,
                  W_constraint=None, b_regularizer=None, b_constraint=None, use_bias=True, rnd_seed=None, **kwargs):
         super_args = {key: value for (key, value) in kwargs.items()}
@@ -222,8 +232,8 @@ class DenseLayer(Layer):
                                                                      "Constraint class"
             self.constraints[self.b_name] = b_constraint
 
-        self.activation = activation
-        self.trainable = True
+        # self.activation = activation # Already set by parent class
+        # self.trainable = True # Default True is set in Layer
 
         # ALWAYS ENSURE ALL CONFUGRATION TYPE INITIALIZATIONS ARE DONE BEFORE WEIGHT INITIALIZATIONS ARE DONE!!
         # FOR EXAMPLE, EARLIER  THE CONTRAINT INITIALIZATION WAS DONE AFTER WEIGHT AND BIAS INITIALIZATION SO
@@ -231,17 +241,25 @@ class DenseLayer(Layer):
 
         if weights is not None:
             weights = np.array(weights)
+            assert len(weights.shape) == len(w_dim_tuple) and all(weights.shape[i] == w_dim_tuple[i] for
+                   i in range(len(weights.shape))), "Provided weights of shape " + str(weights.shape) + \
+                                                    " don't match the input and output shape " + w_dim_tuple
             self.set_params(W=weights)
         else:
             self.set_params(W=initializers.get_init_value(init_type=self.init_type, name=self.w_name,
                                                           dim_tuple=w_dim_tuple, rnd=self.rnd))
-
+        assert not(biases is not None and not self.use_bias), "Bias weights specified even when not using bias!"
         if self.use_bias:
             if biases is not None:
                 biases = np.array(biases)
+                assert len(biases.shape) == len(b_dim_tuple) and all(biases.shape[i] == b_dim_tuple[i] for
+                       i in range(len(biases.shape))), "Provided biases of shape " + str(biases.shape) + \
+                                                        " don't match the output shape " + b_dim_tuple
                 self.set_params(b=biases)
             else:
                 self.set_params(b=initializers.get_init_value(init_type="zero", name=self.b_name, dim_tuple=b_dim_tuple))
+
+        
 
     def get_train_output(self, input):
         scores = T.dot(input, self.W)
@@ -277,7 +295,7 @@ class DenseLayer(Layer):
                 else:
                     self.W = theano.shared(value=W,name=self.w_name,strict=False)
             else:
-                assert False, "set_weights() expects weights to be either a theano shared variable or numpy.ndarray" \
+                assert False, "set_params() expects weights to be either a theano shared variable or numpy.ndarray" \
                               "matrix"
             self.trainable_params[self.w_name] = self.W
         if b is not None:
@@ -292,7 +310,6 @@ class DenseLayer(Layer):
                     self.b.set_value(new_value=biases)
                 else:
                     self.b = theano.shared(value=biases, name=self.b_name, strict=False)
-
             elif isinstance(b, np.ndarray):
                 biases = self.constraints[self.b_name].np_constrain(b) if self.constraints.get(self.b_name, None) is \
                                                                                       not None else b
@@ -302,9 +319,9 @@ class DenseLayer(Layer):
                                                                    " are not compatible with the layer shape " + str(
                     (self.input_dim, self.output_dim))
                 if self.b is not None:
-                    self.b.set_value(new_value=b)
+                    self.b.set_value(new_value=biases)
                 else:
-                    self.b = theano.shared(value=b,name=self.b_name,strict=False)
+                    self.b = theano.shared(value=biases,name=self.b_name,strict=False)
             else:
                 assert False, "set_weights() expects bias to be either a theano shared variable or numpy.ndarray" \
                               "vector"
@@ -332,22 +349,114 @@ class DenseLayer(Layer):
         }
         return(config_dict)
 
-    # def get_gradients(self, cost):
-    #     gradients = dict(zip(self.trainable_params.keys(), theano.grad(cost=cost,
-    #                                                                    wrt=self.trainable_params.values())))
-    #     return(gradients)
-        # updates = {}
-        # for param in gradients.keys():
-        #     updates[self.trainable_params[param]] = self.constraints[param].constrain(self.trainable_params[param]
-        #                                             - (self.learning_rate * gradients[param])) if\
-        #         self.constraints.get(param, None) is not None else self.trainable_params[param] - (self.learning_rate
-        #             * gradients[param])
-        # return updates
+class EmbeddingLayer(Layer):
+    """
+        By default, int32 is assumed for 1-hot embeddings.
+    """
+    def __init__(self, layer_name, vocab_size, embed_size, output_dtype=T.config.floatX,
+                 init_type='glorot_uniform', learning_rate=0.01, clip_threshold=None, pretrained_embeddings=None,
+                 embedding_constraint=None, embedding_regularizer=None, rnd_seed=None, trainable=True, **kwargs):
+        input_dtype = 'int32',
+        input_dim=vocab_size
+        output_dim = embed_size
+        super_args = {key: value for (key, value) in kwargs.items()}
+        local_args = {key: value for (key, value) in locals().items()}
+        del local_args['self']
+        del local_args['kwargs']
+        super_args.update(local_args)
+        del local_args
+        super(EmbeddingLayer, self).__init__(**super_args)
+        self.embeddings_name = self.layer_name + "_embeddings"
+        self.embeddings = None
+        self.vocab_size = vocab_size
+        self.embedding_size = embed_size
+        embeddings_dim_tuple = (self.vocab_size, self.embedding_size)
+        self.clip_threshold = clip_threshold
 
-    # def get_component_regularization_cost(self, is_train=True):
-    #     layer_reg_costs = 0
-    #     if self.regularizers.get(self.w_name, None) is not None:
-    #         layer_reg_costs += self.regularizers[self.w_name].regularize(param=self.W, is_train=is_train)
-    #     if self.use_bias and self.regularizers.get(self.b_name, None) is not None:
-    #         layer_reg_costs += self.regularizers[self.b_name].regularize(param=self.W, is_train=is_train)
-    #     return(layer_reg_costs)
+        # set constraints and regularizers first
+        if pretrained_embeddings is None:
+            if self.rnd_seed is None:
+                self.rnd = np.random.RandomState()
+            else:
+                self.rnd = np.random.RandomState(self.rnd_seed)
+        else:
+            self.rnd_seed = None # Since random seed was not used at all
+
+        if embedding_regularizer is not None:
+            assert isinstance(embedding_regularizer, regularizers.Regularizer), "Provided regularizer for embeddings" \
+                                                                                " must be instance of Regularizer class"
+            self.regularizers[self.embeddings_name] = embedding_regularizer
+        if embedding_constraint is not None:
+            assert isinstance(embedding_constraint, constraints.Constraint), "Provided constraint must be an instance " \
+                                                                             "of Constraint class"
+            self.constraints[self.embeddings_name] = embedding_constraint
+
+        self.trainable = trainable
+        if pretrained_embeddings is not None:
+            pretrained_embeddings = np.array(pretrained_embeddings)
+            self.set_params(embed_mat=pretrained_embeddings)
+        else:
+            self.set_params(embed_mat=initializers.get_init_value(init_type=self.init_type, name=self.embeddings_name,
+                                                                  dim_tuple=embeddings_dim_tuple, rnd=self.rnd))
+
+    def link(self, input, is_train=True):
+        assert isinstance(input, T.TensorVariable),"Provided input to embedding layer must be a theano tensor"
+        assert input.dtype in T.int_dtypes, "Input must be of an integer type. Each integer will be expanded into an" \
+                                            " embedding vector"
+        return self.get_train_output(input=input) if is_train else self.get_test_output(input=input)
+
+    def get_train_output(self, input): # Assumes a tensor of integers
+        return self.embeddings[input]
+
+    def get_test_output(self, input):
+        return self.get_train_output(input=input)
+
+    def set_params(self, embed_mat):
+        if isinstance(embed_mat, theano.tensor.sharedvar.TensorSharedVariable):
+            embeddings = self.constraints[self.embeddings_name].np_constrain(embed_mat.get_value())\
+                         if self.constraints.has_key(self.embeddings_name) else embed_mat.get_value()
+            assert len(embeddings.shape) == 2 and embeddings.shape[0] == self.vocab_size and\
+                   embeddings.shape[1] == self.embedding_size, "Provided embeddings of shape " + str(embeddings.shape)\
+                                          + " don't match layer config: " + str((self.vocab_size, self.embedding_size))
+            if self.embeddings is None:
+                self.embeddings = theano.shared(name=self.embeddings_name, value=embeddings, strict=False)
+            else:
+                self.embeddings.set_value(new_value=embeddings)
+        elif isinstance(embed_mat, np.ndarray):
+            embeddings = self.constraints[self.embeddings_name].np_constrain(embed_mat) if \
+                         self.constraints.has_key(self.embeddings_name) else embed_mat
+            assert len(embeddings.shape) == 2 and embeddings.shape[0] == self.vocab_size and \
+                   embeddings.shape[1] == self.embedding_size, "Provided embeddings of shape " + str(embeddings.shape) \
+                                                               + " don't match layer config: " + str(
+                (self.vocab_size, self.embedding_size))
+            if self.embeddings is None:
+                self.embeddings = theano.shared(name=self.embeddings_name, value=embeddings, strict=False)
+            else:
+                self.embeddings = self.embeddings.set_value(new_value=embeddings)
+        else:
+            assert False, "set_params() expects the pretrained embeddings to be a theano shared variable or a " \
+                          "numpy array"
+        if self.trainable:
+            self.trainable_params[self.embeddings_name] = self.embeddings
+        self.trainable_param_names = self.trainable_params.keys()
+
+    def get_config(self):
+        config_dict = {
+            'name'                 : self.layer_name,
+            'input_dim'            : self.input_dim,
+            'vocab_size'           : self.vocab_size,
+            'embedding_size'       : self.embedding_size,
+            'rnd_seed'             : self.rnd_seed,
+            'input_dtype'          : self.input_dtype,
+            'output_dim'           : self.output_dim,
+            'constraints'          : self.constraints,
+            'regularizers'         : self.regularizers,
+            'init_type'            : self.init_type,
+            'trainable_params'     : self.trainable_params,
+            'trainable_param_names': self.trainable_param_names,
+            'l_rate'               : self.learning_rate,
+            'leak_slope'           : self.leak_slope,
+            'clip_threshold'       : self.clip_threshold,
+            'trainable'            : self.trainable,
+        }
+        return config_dict

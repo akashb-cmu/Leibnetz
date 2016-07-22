@@ -1,17 +1,17 @@
 import theano
-from theano import tensor as T
-from theano import config as Tconfig
-import abc
-import initializers
-import activations
-import regularizers
-import constraints
-import losses
-import utils
 import numpy as np
+import abc
 
 
 class Component(object):
+    """
+    Parent class of all layers/neural network constituents that can be used in a Model. This class is essentially a
+    contract that specifies the expectations in terms of functionalities from a network constituent.
+
+    NOTE: THIS CLASS SHOULD PROBABLY BE AN ABSTRACT CLASS!
+    """
+
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self):
         if type(self) is Component:
@@ -23,6 +23,8 @@ class Component(object):
         self.regularizers = {}  # Dictionary mapping parmaeter names to regularizers for that parameter
         self.constraints = {}  # Dict that maps tensor: constraints instance.
         self.component_lrates = None
+
+        self.trainable = True
 
     def get_trainable_params(self):
         # Return the appropriate trainable parameters along with their names as zipped parallel lists
@@ -111,10 +113,10 @@ class Model(object):
         self.components = {}
         self.inputs = {} # Mapping from input_name to input_tensor
         self.outputs = {} # Mapping from output name to output_tensor
-        # self.inputs and self.outputs can be used to compile the apply_model function
+        # self.inputs and self.outputs can be used to compile the model_test_fn function
         # Both self.inputs and self.outputs should be set by an Optimizer object that trains the model
-        # This ensures that the apply_model function always generates outputs that the model has been trained to produce
-        self.apply_model = None # Compiled theano function to consume inputs and generate outputs
+        # This ensures that the model_test_fn function always generates outputs that the model has been trained to produce
+        self.model_test_fn = None # Compiled theano function to consume inputs and generate outputs
         # Whenever the optimizer re-trains a model, the apply model function is re-compiled to ensure that the model
         # always procudes output that it was most recently trained to produce
 
@@ -123,7 +125,9 @@ class Model(object):
                                                  "class"
         assert self.components.get(component.get_component_name(), None) is None, "Component with same name already " \
                 "exists. Possible duplicate name or redundant addition of existing component."
-        self.components[component.get_component_name()] = component
+        if component.trainable: # Only register the component if it is trainable
+            print("Registered component %s"%(component.component_name))
+            self.components[component.get_component_name()] = component
 
     def add_output(self, output_name, output_tensor):
         assert isinstance(output_tensor, theano.tensor.TensorVariable), "Output tensor must be a theano tensor " \
@@ -162,17 +166,17 @@ class Model(object):
         return constrained_component_param_updates
 
     def compile_model(self):
-        self.apply_model = theano.function(inputs=self.inputs.values(), outputs=self.outputs.values())
-        return(self.apply_model)
+        self.model_test_fn = theano.function(inputs=self.inputs.values(), outputs=self.outputs.values())
+        return(self.model_test_fn)
 
     def use_model(self, inputs_dict):
-        assert self.apply_model is not None, "Model has not been trained yet. Cannot use model unles it has been " \
+        assert self.model_test_fn is not None, "Model has not been trained yet. Cannot use model unles it has been " \
                                              "trained"
-        print("CAUTION: CURRENTLY, the apply_model has compiled the the test function using train computation graph."
+        print("CAUTION: CURRENTLY, the model_test_fn has compiled the the test function using train computation graph."
               "This is unsuitable is models that use dropout layers for example.")
         inputs = [inputs_dict[input] for input in self.inputs.keys()]
         assert all(isinstance(input, np.ndarray) for input in inputs)
-        outputs = self.apply_model(*inputs)
+        outputs = self.model_test_fn(*inputs)
         outputs_dict = {}
         for index, output in enumerate(self.outputs.keys()):
             outputs_dict[output] = outputs[index]
