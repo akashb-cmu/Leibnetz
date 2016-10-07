@@ -50,7 +50,9 @@ def categorical_crossentropy_loss(y_pred, y_actual, from_logits=False, **kwargs)
     log of predicted probability of the correct label.
     """
     print("Using categorical cross-entropy. Ensure y_actual is a matrix with each row  have appropriate class indicator"
-          "variables.")
+          "variables for the corresponding input sample. Current implementation of cross entropy averages "
+          "across samples. This should make the learning rate robust to the size of the dataset.")
+    assert y_actual.ndim == 2 and y_pred.ndim == 2, "Supplied gold and pred distributions for CCE are not appropriate!"
     if from_logits:
         # Output of a layer with un-normalized, possibility negative scores. This is simply a precaution to ensure
         # compatibility with categorical cross-entropy.
@@ -65,7 +67,15 @@ def categorical_crossentropy_loss(y_pred, y_actual, from_logits=False, **kwargs)
     # Attention and Multi-Label Classification." arXiv preprint arXiv:1602.02068 (2016)), we replace 0 probabilities
     # with some epsilon value.
     y_pred = T.clip(y_pred, epsilon, 1.0 - epsilon)
-    return T.nnet.categorical_crossentropy(y_pred, y_actual)
+
+    cross_ent = -T.mean(T.sum(y_actual * T.log(y_pred),axis=-1), axis=0)
+    # inner sum is over class labels
+    # outer average is over samples
+
+    # Out of the box theano implementation of categorical cross-entropy. It does not average over samples which makes
+    # the learning rate dependent on batch size when optimizing
+    # return T.nnet.categorical_crossentropy(y_pred, y_actual)
+    return cross_ent
 
 
 def sparse_categorical_crossentropy_loss(y_pred, y_actual, from_logits=False, **kwargs):
@@ -113,6 +123,7 @@ loss_selector = {fun: globals()[fun] for fun in filter(lambda x: x.endswith("_lo
 def get_loss(loss_type, y_pred, y_actual, **kwargs):
     loss_type += "_loss"
     assert loss_type in loss_selector.keys(), "Invalid loss selected. Please select one of " + str(kwargs.keys())
+    print("Not all losses are averaged across samples! This could lead to varying sensitivities to learning rates!")
     return(loss_selector[loss_type](y_pred, y_actual, **kwargs))
 
 # IMPLEMENT A MULTICLASS LOSS FUNCTION!!

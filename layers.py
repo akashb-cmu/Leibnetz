@@ -9,6 +9,7 @@ import constraints
 import numpy as np
 from model import Component
 
+
 # In order for any type of layer to be used in a model, it MUST subclass from Component, since doing so ensures the
 # layer implements all functionalities required to build, compile, train and test a model.
 
@@ -128,16 +129,6 @@ class Layer(Component):
         # Return the appropriate fixed weights along with their names as zipped parallel lists
         return(self.fixed_params)
 
-    # The following build methods are only relevant for sequential models where a unique path exists from  inputs to
-    # outputs.
-    # @abc.abstractmethod
-    # def build_all(self, cost):
-    #     # Evaluates gradients of all learnable parameters and returns the list of updates corresponding to all of
-    #     # those weights for optimization. This method assumes inputs for this layer and all its ancestor layers have
-    #     # been set. This method should return a dictionary mapping parameters to their updates and gradients.
-    #     pass
-    #
-
     @abc.abstractmethod
     def set_params(self, weights_dict):
         # Using the dictionary of weights provided to set parameters
@@ -186,7 +177,8 @@ class DenseLayer(Layer):
     def __init__(self, name, output_dim, input_dim, input_dtype=Tconfig.floatX, output_dtype=Tconfig.floatX,
                  activation='linear', init_type='glorot_uniform',
                  learning_rate=0.01, leak_slope=0.01, clip_threshold=None, weights=None, biases=None, W_regularizer=None,
-                 W_constraint=None, b_regularizer=None, b_constraint=None, use_bias=True, rnd_seed=None, **kwargs):
+                 W_constraint=None, b_regularizer=None, b_constraint=None, use_bias=True, rnd_seed=None, trainable=True,
+                 **kwargs):
         super_args = {key: value for (key, value) in kwargs.items()}
         local_args = {key: value for (key, value) in locals().items()}
         assert not (not use_bias and biases is not None), "Not using bias but bias weights have been provided."
