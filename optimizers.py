@@ -143,7 +143,9 @@ class Optimizer(object):
         return [self.val_output_name_to_gold_mat_dict[output] for output in self.model.train_outputs_ordering]
 
     def get_cost(self, is_train=True):
-        cost = T.sum(self.get_output_costs()) # Not this actually returns a list with a single element rather than
+        cost = T.sum(self.get_output_costs())
+        # Note : We add all costs together so we can't track individual costs variations. Also, T.sum actually returns
+        # a list with a single element rather than a scalar
         # scalar. This is not an issue when evaluating gradients since a scalar is depicted as an array with a single
         # element in theano.
         # cost = T.mean(self.get_output_costs()) # average the cost over all samples in the batch
@@ -323,10 +325,14 @@ class BatchGradientDescent(Optimizer):
                                                 outputs=self.get_model_output_tensors() + [val_cost])
         self.model.compile_model()
 
-    def train(self, batch_size=None, n_epochs=100, validate=True, rnd=np.random.RandomState()):
+    def train(self, batch_size=None, n_epochs=100, validate=True, rnd=np.random.RandomState(), skip_compile=False):
         print("Train function currently outputs the last output as the val/train loss at the end of each epoch. This"
               " isn't entirely general and should be fixed in future commits!")
-        self.compile_model(validate=validate)
+        if not skip_compile:
+            self.compile_model(validate=validate)
+        assert self.train_model is not None, "Train function not compiled!"
+        if validate:
+            assert self.validate_model is not None, "Validation function not compiled!"
         train_inputs = self.get_train_inputs()
         train_outputs = self.get_train_outputs()
         input_size = train_inputs[0].shape[0]

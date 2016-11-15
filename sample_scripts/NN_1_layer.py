@@ -49,6 +49,11 @@ class NN_1_Layer(Model):
         self.add_gold_train_output(output_name='layer2_op',gold_train_output_tensor=input_labels)
         self.add_train_input(input_name=input_images.name,train_input_tensor=input_images)
         self.add_train_output(output_name='layer2_op', train_output_tensor=layer2_op)
+
+        """
+        Names of model outputs and the corresponding gold output should match exactly
+        """
+
         self.built = True
 
     def build_test(self):
@@ -77,8 +82,15 @@ class NN_1_Layer(Model):
         assert len(self.get_ordered_test_input_tensors()) == 1, "No.of inputs != 1 !"
         assert optimizer == "batch_gradient_descent", "Optimizers other than naive batch gradient descent not" \
                                                       " supported currently!"
-        batch_GD_optimizer = BatchGradientDescent(model=self, clip_threshold=clip_threshold)
+
+
+        if self.optimizer is None:
+            batch_GD_optimizer = BatchGradientDescent(model=self, clip_threshold=clip_threshold)
+        else:
+            batch_GD_optimizer = self.optimizer
         rnd = np.random.RandomState(rnd_seed)
+
+
         batch_GD_optimizer.configure_train_inputs(input_name_to_input_mat_dict=
         {
             self.train_input_tensors['input_img'].name: train_input_images,
@@ -104,8 +116,12 @@ class NN_1_Layer(Model):
             {
                 'layer2_op': val_output_labels
             })
+        # [self.model_train_fn, self.model_val_fn] = batch_GD_optimizer.train(batch_size=batch_size, n_epochs=n_epochs,
+        #                                                                     validate=validate,rnd=rnd)
+
         [self.model_train_fn, self.model_val_fn] = batch_GD_optimizer.train(batch_size=batch_size, n_epochs=n_epochs,
-                                                                            validate=validate,rnd=rnd)
+                                                    validate=validate, rnd=rnd, skip_compile=self.optimizer is not None)
+        self.optimizer = batch_GD_optimizer
 
     def apply_model(self, input_images):
         """
@@ -178,6 +194,26 @@ model_test_labels = get_multiclass_labels(model_test_labels, n_classes)
 test_accuracy = get_multiclass_accuracy(model_test_labels, test_labels)
 
 print("Test accuracy is: %f"%(test_accuracy))
+
+print("Now training on test to demostrate re-usability of copilation graph")
+
+NN_1.train_model(train_input_images=test_images, train_output_labels=test_labels,
+                 val_input_images=test_images[-1000:], val_output_labels=test_labels[-1000:], batch_size=batch_size,
+                 n_epochs=n_epochs, rnd_seed=1234, clip_threshold=None)
+
+model_outputs = NN_1.apply_model(input_images=test_images)
+
+model_test_labels = model_outputs['layer2_op']
+# Ideally the model subclass that the user creates should expose a method to get the output of interest
+
+model_test_labels = np.argmax(model_test_labels, axis=1)
+
+model_test_labels = get_multiclass_labels(model_test_labels, n_classes)
+
+test_accuracy = get_multiclass_accuracy(model_test_labels, test_labels)
+
+print("Test accuracy is: %f"%(test_accuracy))
+
 
 # VALIDATION DOESN'T WORK!!
 

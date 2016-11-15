@@ -96,13 +96,24 @@ def binary_crossentropy_loss(y_pred, y_actual, from_logits=False, **kwargs):
     """
     Assumes inputs are vectors with 0 or 1 values as class labels
     """
+    print("Binary cross entropy expects gold labels that are 1 or 0 and model "
+          "outputs that are in the range of 0 to 1!")
+    assert y_pred.ndim == y_actual.ndim, \
+        "Dimensions of inputs to binary cross entropy gold outputs must match!"
     if from_logits:
         output = T.nnet.sigmoid(y_pred)
     else:
         output = y_pred
     # avoid numerical instability with _EPSILON clipping
     output = T.clip(output, epsilon, 1.0 - epsilon)
-    return T.nnet.binary_crossentropy(output, y_actual)
+    # Averaging across samples
+    bin_ce_loss = -T.mean(input=y_actual * T.log(output) + (1 - y_actual) * T.log(1 - output), axis=0)
+
+    # Adding across other dimensions
+    if y_pred.ndim > 1:
+        bin_ce_loss = T.sum(input=bin_ce_loss)
+    return bin_ce_loss
+    # return T.nnet.binary_crossentropy(output, y_actual) # Out of the box theano binary cross entropy implementation
 
 def kullback_leibler_divergence_loss(y_pred, y_actual, **kwargs):
     y_actual = T.clip(y_actual, epsilon, 1)

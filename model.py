@@ -134,6 +134,7 @@ class Model(object):
 
         self.model_test_fn = None # Compiled theano function to consume test_input_tensors and generate test_output_tensors
         self.built = False
+        self.optimizer = None
 
     def register_component(self, component):
         assert isinstance(component, Component), "Cannot register a component if it isn't a child of the Component " \

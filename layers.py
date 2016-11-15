@@ -351,6 +351,7 @@ class EmbeddingLayer(Layer):
         input_dtype = 'int32',
         input_dim=vocab_size
         output_dim = embed_size
+        name = layer_name
         super_args = {key: value for (key, value) in kwargs.items()}
         local_args = {key: value for (key, value) in locals().items()}
         del local_args['self']
