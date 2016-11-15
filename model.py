@@ -186,11 +186,17 @@ class Model(object):
         return component_to_param_to_gradients
 
     def get_all_regularizer_costs(self, is_train=True):
-        reg_cost = 0
+        # reg_cost = 0
+        print("Currently regularizer costs are reported at a per component level rather than a per parameter level!")
+        reg_cost = []
+        reg_cost_names = []
         if is_train:
             for component in self.trainable_components:
-                reg_cost += self.trainable_components[component].get_component_regularization_cost(is_train=is_train)
-        return reg_cost
+                comp_reg_cost = self.trainable_components[component].get_component_regularization_cost(is_train=is_train)
+                if comp_reg_cost != 0.:
+                    reg_cost.append(self.trainable_components[component].get_component_regularization_cost(is_train=is_train))
+                    reg_cost_names.append(self.trainable_components[component].component_name + "_reg_cost")
+        return reg_cost, reg_cost_names
 
     def get_all_lrates(self):
         param_to_lrate = {component:{} for component in self.trainable_components}

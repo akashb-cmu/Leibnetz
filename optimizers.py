@@ -26,6 +26,8 @@ class Optimizer(object):
         # obtained from the model itself
         self.validate_model = None
         self.train_model = None
+        self.train_cost_names = None
+        self.val_cost_names = None
     """
     Optimizer should support clip (T/F), clip_val, clip_norm, and any other optimizer specific options as arguments to
     the optimize function
@@ -143,14 +145,29 @@ class Optimizer(object):
         return [self.val_output_name_to_gold_mat_dict[output] for output in self.model.train_outputs_ordering]
 
     def get_cost(self, is_train=True):
-        cost = T.sum(self.get_output_costs())
+        # cost = T.sum(self.get_output_costs())
         # Note : We add all costs together so we can't track individual costs variations. Also, T.sum actually returns
         # a list with a single element rather than a scalar
         # scalar. This is not an issue when evaluating gradients since a scalar is depicted as an array with a single
         # element in theano.
         # cost = T.mean(self.get_output_costs()) # average the cost over all samples in the batch
-        reg_cost = self.model.get_all_regularizer_costs(is_train=is_train)
+        all_costs = self.get_output_costs()
+        all_cost_names = [key for key in self.model.train_outputs_ordering]
+        reg_cost, reg_cost_names = self.model.get_all_regularizer_costs(is_train=is_train)
+        all_costs.extend(reg_cost)
+        all_cost_names.extend(reg_cost_names)
+        return all_costs, all_cost_names
+
+    def get_scalar_cost(self,is_train=True):
+        cost = T.sum(self.get_output_costs())
+        # Note : We add all costs together so we can't track individual costs variations. Also, T.sum actually returns
+        # a list with a single element rather than a scalar
+        # scalar. This is not an issue when evaluating gradients since a scalar is depicted as an array with a single
+        # element in theano.
+        reg_costs, reg_cost_names = self.model.get_all_regularizer_costs(is_train=is_train)
+        reg_cost = T.sum(reg_costs)
         return cost + reg_cost
+
 
     ####################################################################################################################
     ##################################### C O N F I G U R E     M E T H O D S ##########################################
@@ -252,6 +269,16 @@ class Optimizer(object):
                    "for output " + key + " doesn't match that of its train gold output"
         self.val_output_name_to_gold_mat_dict = {key: val for (key, val) in val_output_name_to_gold_op_mat_dict.items()}
 
+    def print_costs(self, cost_names, cost_values):
+        assert len(cost_names) == len(cost_values), "Mismatch between length of cost names and cost values!"
+        for cost_index, cost_name in enumerate(cost_names):
+            print("%s:%f\t\t"% (cost_name, cost_values[cost_index])),
+            if (cost_index + 1) % 5 == 0:
+                print("")
+        print("")
+
+
+
 
 class BatchGradientDescent(Optimizer):
 
@@ -261,8 +288,8 @@ class BatchGradientDescent(Optimizer):
     def get_updates(self):
         if self.updates is not None:
             return self.updates
-        # train_cost = self.model.get_cost(is_train=True)
-        train_cost = self.get_cost(is_train=True)
+        # train_cost, train_cost_names = self.get_cost(is_train=True)
+        train_cost = self.get_scalar_cost(is_train=True)
         # if self.clip:
         #     train_cost = theano.gradient.grad_clip(x=train_cost, lower_bound=-1. * self.clip_threshold,
         #                                            upper_bound=1. * self.clip_threshold)
@@ -312,24 +339,34 @@ class BatchGradientDescent(Optimizer):
         updates_dict = OrderedDict()
         for component in gd_updates:
             updates_dict.update(gd_updates[component])
-        train_cost = self.get_cost(is_train=True)
+        train_costs, train_cost_names = self.get_cost(is_train=True)
         print("Compiling train function...")
         self.train_model = theano.function(inputs=self.get_model_input_tensors()+self.get_gold_output_tensors(),
-                                           outputs=self.get_model_output_tensors() + [train_cost],
+                                           outputs=self.get_model_output_tensors() + train_costs,
                                            updates=updates_dict)
-        val_cost = self.get_cost(is_train=False)
+        val_costs, val_cost_names = self.get_cost(is_train=False)
         if validate:
             print("CAUTION: Currently optimizer compiles validation function using computation graph for train. This "
                   "is not suitable for models that use dropout layers for example")
             self.validate_model = theano.function(inputs=self.get_model_input_tensors()+self.get_gold_output_tensors(),
-                                                outputs=self.get_model_output_tensors() + [val_cost])
+                                                outputs=self.get_model_output_tensors() + val_costs)
         self.model.compile_model()
+        return train_cost_names, val_cost_names
 
     def train(self, batch_size=None, n_epochs=100, validate=True, rnd=np.random.RandomState(), skip_compile=False):
         print("Train function currently outputs the last output as the val/train loss at the end of each epoch. This"
               " isn't entirely general and should be fixed in future commits!")
+
+        print("IT IS POSSIBLE TO SUPPORT BATCHING WITH MODELS DEFINED FOR SINGLE INSTANCES! CHANGE THE CHECKS FOR TENSOR"
+              "DIMENSIONS IN THE SANITY CHECK AND CONFIG FUNCTIONS AT SOME POINT IN THE FUTURE!")
         if not skip_compile:
-            self.compile_model(validate=validate)
+            train_cost_names, val_cost_names = self.compile_model(validate=validate)
+            self.train_cost_names = train_cost_names
+            self.val_cost_names = val_cost_names
+        if self.train_cost_names is not None:
+            train_cost_names = self.train_cost_names
+        if self.val_cost_names is not None:
+            val_cost_names = self.val_cost_names
         assert self.train_model is not None, "Train function not compiled!"
         if validate:
             assert self.validate_model is not None, "Validation function not compiled!"
@@ -363,7 +400,7 @@ class BatchGradientDescent(Optimizer):
             print("Epoch %d"%(epoch + 1))
             if batch_size is not None:
                 rnd.shuffle(train_index_shuffle_vect)
-                tot_epoch_cost = 0.
+                tot_epoch_cost = [0. for cost_name in train_cost_names]
                 tot_batches = 0.
                 for batch_start_index in range(0, input_size, batch_size):
                     tot_batches += 1.
@@ -371,29 +408,41 @@ class BatchGradientDescent(Optimizer):
                     train_batch_inputs = [input[[batch_indices]] for input in train_inputs]
                     train_batch_outputs = [output[[batch_indices]] for output in train_outputs]
                     train_fn_outputs = self.train_model(*(train_batch_inputs + train_batch_outputs))
-                    tot_epoch_cost += train_fn_outputs[-1]
+                    train_costs = train_fn_outputs[-len(train_cost_names):]
+                    for cost_index, cost_val in enumerate(train_costs):
+                        tot_epoch_cost[cost_index] += cost_val
                     # print("Training loss is : %f"%(train_fn_outputs[-1]))
                     # if validate:
                     #     val_fn_outputs = self.validate_model(*(validation_inputs+validation_outputs))
                     #     tot_epoch_val_cost += val_fn_outputs[-1]
-                        # print("Validation loss is : %f"%(val_fn_outputs[-1]))
-                print("Avg. batch cost for this epoch : %f"%(tot_epoch_cost/tot_batches))
+                    #     print("Validation loss is : %f"%(val_fn_outputs[-1]))
+                print("Avg. batch costs for epoch %d"%(epoch+1))
+                train_costs = [train_cost/tot_batches for train_cost in tot_epoch_cost]
+                self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
                 all_train_fn_outputs = self.validate_model(*(train_inputs + train_outputs))
-                print("Post epoch train cost = %f"%(all_train_fn_outputs[-1]))
+                all_train_costs = all_train_fn_outputs[-len(val_cost_names):]
+                print("Post epoch train costs after epoch %d:"%(epoch+1))
+                self.print_costs(cost_names=val_cost_names,cost_values=all_train_costs)
                 if validate:
                     val_fn_outputs = self.validate_model(*(validation_inputs + validation_outputs))
                     # val_op_str = "\t".join([str(validation_outputs[i]) + " = " + str(val_fn_outputs[i])
                     #                         for i in range(len(validation_outputs))])
-                    print("Validation loss after epoch %d is %f:"%(epoch + 1, val_fn_outputs[-1]))
+                    val_costs = val_fn_outputs[-len(val_cost_names):]
+                    print("Post epoch val costs after_epoch %d:"%(epoch+1))
+                    self.print_costs(cost_names=val_cost_names,cost_values=val_costs)
                     # print(val_op_str)
             else:
                 train_fn_outputs = self.train_model(*(train_inputs + train_outputs))
-                print("Post epoch training loss is : %f"%(train_fn_outputs[-1]))
+                train_costs = train_fn_outputs[-len(train_cost_names):]
+                print("Post epoch training loss after epoch %d is"%(epoch+1))
+                self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
                 if validate:
                     val_fn_outputs = self.validate_model(*(validation_inputs + validation_outputs))
                     # val_op_str = "\t".join([str(validation_outputs[i]) + " = " + str(val_fn_outputs[i])
                     #                         for i in range(len(validation_outputs))])
-                    print("Validation loss after epoch %d is %f:" % (epoch + 1, val_fn_outputs[-1]))
+                    val_costs = val_fn_outputs[-len(val_cost_names):]
+                    print("Validation loss after epoch %d is" % (epoch + 1))
+                    self.print_costs(cost_names=val_cost_names, cost_values=val_costs)
         print("Done training!")
         return self.train_model, self.validate_model
 

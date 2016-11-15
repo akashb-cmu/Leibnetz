@@ -154,6 +154,7 @@ layer2_dim = 50
 n_epochs = 10
 n_classes = 10
 batch_size = 1 # None => Gradient descent (whole dataset is a batch)
+l1_reg_coeff = 0.
 
 learning_rate = 0.01
 
@@ -162,7 +163,7 @@ test_labels = get_multiclass_labels(test_labels, n_classes)
 
 NN_1 = NN_1_Layer()
 
-NN_1.build_train(layer1_ip_dim=input_dim, layer1_hidden_dim=layer1_dim, n_classes=n_classes, layer1_W_regularizer=None,
+NN_1.build_train(layer1_ip_dim=input_dim, layer1_hidden_dim=layer1_dim, n_classes=n_classes, layer1_W_regularizer=l2(l2_reg_coeff=l1_reg_coeff),
                  layer1_W_constraint=None, layer1_b_regularizer=None, layer1_b_constraint=None,
                  layer1_activation='tanh', layer2_W_regularizer=None, layer2_W_constraint=None,
                  layer2_b_regularizer=None, layer2_b_constraint=None, layer2_activation='softmax',
