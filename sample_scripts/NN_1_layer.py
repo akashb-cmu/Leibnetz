@@ -120,7 +120,7 @@ class NN_1_Layer(Model):
         #                                                                     validate=validate,rnd=rnd)
 
         [self.model_train_fn, self.model_val_fn] = batch_GD_optimizer.train(batch_size=batch_size, n_epochs=n_epochs,
-                                                    validate=validate, rnd=rnd, skip_compile=self.optimizer is not None)
+                                                                            compile_validation_fn=validate, rnd=rnd, skip_compile=self.optimizer is not None)
         self.optimizer = batch_GD_optimizer
 
     def apply_model(self, input_images):
@@ -196,7 +196,7 @@ test_accuracy = get_multiclass_accuracy(model_test_labels, test_labels)
 
 print("Test accuracy is: %f"%(test_accuracy))
 
-print("Now training on test to demostrate re-usability of copilation graph")
+print("Now training on test to demostrate re-usability of compilation graph")
 
 NN_1.train_model(train_input_images=test_images, train_output_labels=test_labels,
                  val_input_images=test_images[-1000:], val_output_labels=test_labels[-1000:], batch_size=batch_size,

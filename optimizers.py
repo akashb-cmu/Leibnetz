@@ -2,6 +2,7 @@ from model import Model
 import losses
 from collections import OrderedDict
 from layers import *
+from utils import  eprint
 
 class Optimizer(object):
     __metaclass__=abc.ABCMeta
@@ -194,7 +195,7 @@ class Optimizer(object):
             assert isinstance(val_tuple[1], np.ndarray), "Specified gold mat for " + key + " must be a numpy.ndarray!"
             assert val_tuple[1].ndim == self.model.train_output_tensors[key].ndim, "No. of dimensions of provided " \
                     "gold output = " + str(val_tuple[1].ndim) + " for the output " + key + "doesn't match that " \
-                    "of the corresponding model output tensor (=" + str(self.model.train_output_tensors.ndim) + ") !"
+                    "of the corresponding model output tensor (=" + str(self.model.train_output_tensors[key].ndim) + ") !"
             assert val_tuple[1].ndim == self.model.gold_train_outputs_tensors[key].ndim, "No. of dims of provided " \
                    "gold output = " + str(val_tuple[1].ndim) + " for the output " + key + "doesn't match that " \
                    "of the corresponding gold output tensor (=" + str(self.model.gold_train_outputs_tensors.ndim) + ")!"
@@ -353,14 +354,15 @@ class BatchGradientDescent(Optimizer):
         self.model.compile_model()
         return train_cost_names, val_cost_names
 
-    def train(self, batch_size=None, n_epochs=100, validate=True, rnd=np.random.RandomState(), skip_compile=False):
-        print("Train function currently outputs the last output as the val/train loss at the end of each epoch. This"
+    def train(self, batch_size=None, n_epochs=100, compile_validation_fn=True, rnd=np.random.RandomState(), skip_compile=False,
+              validate=False, suppress_train_reporting=False):
+        eprint("Train function currently outputs the last output as the val/train loss at the end of each epoch. This"
               " isn't entirely general and should be fixed in future commits!")
 
-        print("IT IS POSSIBLE TO SUPPORT BATCHING WITH MODELS DEFINED FOR SINGLE INSTANCES! CHANGE THE CHECKS FOR TENSOR"
+        eprint("IT IS POSSIBLE TO SUPPORT BATCHING WITH MODELS DEFINED FOR SINGLE INSTANCES! CHANGE THE CHECKS FOR TENSOR"
               "DIMENSIONS IN THE SANITY CHECK AND CONFIG FUNCTIONS AT SOME POINT IN THE FUTURE!")
         if not skip_compile:
-            train_cost_names, val_cost_names = self.compile_model(validate=validate)
+            train_cost_names, val_cost_names = self.compile_model(validate=compile_validation_fn)
             self.train_cost_names = train_cost_names
             self.val_cost_names = val_cost_names
         if self.train_cost_names is not None:
@@ -368,7 +370,7 @@ class BatchGradientDescent(Optimizer):
         if self.val_cost_names is not None:
             val_cost_names = self.val_cost_names
         assert self.train_model is not None, "Train function not compiled!"
-        if validate:
+        if compile_validation_fn or validate:
             assert self.validate_model is not None, "Validation function not compiled!"
         train_inputs = self.get_train_inputs()
         train_outputs = self.get_train_outputs()
@@ -397,8 +399,8 @@ class BatchGradientDescent(Optimizer):
         assert isinstance(n_epochs, int), "Number of epochs must be an integer"
         train_index_shuffle_vect = np.array([i for i in range(input_size)])
         for epoch in range(n_epochs):
-            print("Epoch %d"%(epoch + 1))
             if batch_size is not None:
+                print("Epoch %d" % (epoch + 1))
                 rnd.shuffle(train_index_shuffle_vect)
                 tot_epoch_cost = [0. for cost_name in train_cost_names]
                 tot_batches = 0.
@@ -416,13 +418,14 @@ class BatchGradientDescent(Optimizer):
                     #     val_fn_outputs = self.validate_model(*(validation_inputs+validation_outputs))
                     #     tot_epoch_val_cost += val_fn_outputs[-1]
                     #     print("Validation loss is : %f"%(val_fn_outputs[-1]))
-                print("Avg. batch costs for epoch %d"%(epoch+1))
-                train_costs = [train_cost/tot_batches for train_cost in tot_epoch_cost]
-                self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
-                all_train_fn_outputs = self.validate_model(*(train_inputs + train_outputs))
-                all_train_costs = all_train_fn_outputs[-len(val_cost_names):]
-                print("Post epoch train costs after epoch %d:"%(epoch+1))
-                self.print_costs(cost_names=val_cost_names,cost_values=all_train_costs)
+                if not suppress_train_reporting:
+                    print("Avg. batch costs for epoch %d"%(epoch+1))
+                    train_costs = [train_cost/tot_batches for train_cost in tot_epoch_cost]
+                    self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
+                    all_train_fn_outputs = self.validate_model(*(train_inputs + train_outputs))
+                    all_train_costs = all_train_fn_outputs[-len(val_cost_names):]
+                    print("Post epoch train costs after epoch %d:"%(epoch+1))
+                    self.print_costs(cost_names=val_cost_names,cost_values=all_train_costs)
                 if validate:
                     val_fn_outputs = self.validate_model(*(validation_inputs + validation_outputs))
                     # val_op_str = "\t".join([str(validation_outputs[i]) + " = " + str(val_fn_outputs[i])
@@ -433,17 +436,22 @@ class BatchGradientDescent(Optimizer):
                     # print(val_op_str)
             else:
                 train_fn_outputs = self.train_model(*(train_inputs + train_outputs))
-                train_costs = train_fn_outputs[-len(train_cost_names):]
-                print("Post epoch training loss after epoch %d is"%(epoch+1))
-                self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
+                if not suppress_train_reporting:
+                    train_costs = train_fn_outputs[-len(train_cost_names):]
+                    # print("Post epoch training loss after epoch %d is"%(epoch+1))
+                    print("Post epoch training loss after epoch is")
+                    self.print_costs(cost_names=train_cost_names,cost_values=train_costs)
                 if validate:
                     val_fn_outputs = self.validate_model(*(validation_inputs + validation_outputs))
                     # val_op_str = "\t".join([str(validation_outputs[i]) + " = " + str(val_fn_outputs[i])
                     #                         for i in range(len(validation_outputs))])
                     val_costs = val_fn_outputs[-len(val_cost_names):]
-                    print("Validation loss after epoch %d is" % (epoch + 1))
+                    # print("Validation loss after epoch %d is" % (epoch + 1))
+                    print("Validation loss after epoch is")
                     self.print_costs(cost_names=val_cost_names, cost_values=val_costs)
-        print("Done training!")
+        eprint("Sometimes validation error doesn't match training error for the same data even without regularizers"
+               "etc. INVESTIGATE!")
+        # print("Done training!")
         return self.train_model, self.validate_model
 
     def validate(self, validation_inputs, validation_outputs):

@@ -1,5 +1,6 @@
 import theano.tensor as T
 from layers import *
+from utils import eprint
 
 
 class Component(object):
@@ -187,7 +188,7 @@ class Model(object):
 
     def get_all_regularizer_costs(self, is_train=True):
         # reg_cost = 0
-        print("Currently regularizer costs are reported at a per component level rather than a per parameter level!")
+        eprint("Currently regularizer costs are reported at a per component level rather than a per parameter level!")
         reg_cost = []
         reg_cost_names = []
         if is_train:
