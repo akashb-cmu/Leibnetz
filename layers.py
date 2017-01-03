@@ -132,7 +132,7 @@ class Layer(Component):
     @abc.abstractmethod
     def set_params(self, weights_dict):
         # Using the dictionary of weights provided to set parameters
-        return
+        pass
 
     def get_output_shape(self, input_shape):
         # Return the appropriate output shape
