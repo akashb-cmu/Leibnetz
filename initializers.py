@@ -1,5 +1,7 @@
 import theano
 import numpy as np
+import  constraints
+from utils import eprint
 
 """
 This package implements various different initialization schemes such as:
@@ -159,8 +161,27 @@ init_selector = {fun: globals()[fun] for fun in filter(lambda x: x.endswith("_pa
 #     assert init_type in init_selector.keys(), "Invalid initialization specified: " + init_type
 #     return(init_selector[init_type](name, dim_tuple, **kwargs))
 
-def get_init_value(init_type, name, dim_tuple, dim_ordering='th', rnd=None, scale=0.1, **kwargs):
+def get_init_value(init_type, name, dim_tuple, dim_ordering='th', weights=None, constraint=None, rnd=None, scale=0.1, **kwargs):
     init_type += "_param_init"
+    eprint("New initializer with pretrained weights and constraints has not been tested!")
+    if constraint is not None:
+        assert isinstance(constraint, constraints.Constraint), "Supplied constraint is not an instance of the " \
+                                                               "constraint class"
+    if weights is not None:
+        assert isinstance(weights, np.ndarray), "Pretrained weight supplied must be a numpy array!"
+        assert len(dim_tuple) == len(weights.shape) and \
+               all(dim == wdim for (dim, wdim) in zip(dim_tuple, weights.shape)), "Dimensions of the supplied weights " \
+                                                                                 "don't mach the dim tuple"
+        if constraint is not None:
+            return theano.shared(value=constraint.np_constrain(weights), name=name, strict=False)
+        else:
+            theano.shared(value=weights, name=name, strict=False)
     assert init_type in init_selector.keys(), "Invalid initialization specified: " + init_type
-    init_args = {'name':name, 'dim_tuple':dim_tuple, 'dim_ordering':dim_ordering, 'rnd':rnd, 'scale':scale}
-    return(init_selector[init_type](name=name, dim_tuple=dim_tuple, **kwargs))
+    init_args = kwargs
+    # init_args = {'name':name, 'dim_tuple':dim_tuple, 'dim_ordering':dim_ordering, 'rnd':rnd, 'scale':scale}
+    init_args.update({'name': name, 'dim_tuple': dim_tuple, 'dim_ordering': dim_ordering, 'rnd': rnd, 'scale': scale})
+    # return(init_selector[init_type](name=name, dim_tuple=dim_tuple, **kwargs))
+    svar = init_selector[init_type](**init_args)
+    if constraint is not None:
+        svar.set_value(constraint.np_constrain(svar.get_value()))
+    return(svar)
