@@ -59,7 +59,6 @@ lstm = LSTM(name="batch_lstm", hidden_dim=hidden_dim, input_dim=ip_dim,
             w_hu_constraint=None, w_xu_constraint=None, b_u_constraint=None,
             w_hi_constraint=None, w_xi_constraint=None, w_ci_constraint=None, b_i_constraint=None,
             w_ho_constraint=None, w_xo_constraint=None, w_co_constraint=None, b_o_constraint=None,
-            w_ch_constraint=None, b_h_constraint=None,
 
             use_biases=True, rnd_seed=None, trainable=True)
 
