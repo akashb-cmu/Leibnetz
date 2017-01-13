@@ -258,13 +258,18 @@ class Model(object):
         assert len(test_output_tensor_set) > 0, "No test_outputs configured in " \
                                                                        "model!"
 
-        assert test_output_tensor_set.intersection( set(
-            self.train_output_tensors.keys()) ) == test_output_tensor_set, \
-            "Model train_output_tensors and model test_output_tensors are out of sync"
-        assert test_output_tensor_set.intersection(set(
-            self.gold_train_outputs_tensors.keys()) ) == test_output_tensor_set, \
-            "Model test_output_tensors and model gold_output_tensors are out of sync! This also means the model" \
-            " model train_output_tensors and model gold_output_tensors are out of sync!"
+        # We shouldn't place any restrictions on the co-occurrence of train and test output tensors. It is possible
+        # that train outputs are never used by test (example multitask training where the secondary task is not as
+        # important) or test outputs that weren't explicitly trained (eg. outputting hidden and context states of LSTM)
+        # The same logic holds for the gold train outputs vs. test outputs
+        # assert test_output_tensor_set.intersection( set(
+        #     self.train_output_tensors.keys()) ) == test_output_tensor_set, \
+        #     "Model train_output_tensors and model test_output_tensors are out of sync"
+        # assert test_output_tensor_set.intersection(set(
+        #     self.gold_train_outputs_tensors.keys()) ) == test_output_tensor_set, \
+        #     "Model test_output_tensors and model gold_output_tensors are out of sync! This also means the model" \
+        #     " model train_output_tensors and model gold_output_tensors are out of sync!"
+
         if self.test_outputs_ordering is None:
             self.test_outputs_ordering = sorted(self.test_output_tensors.keys())
         else:
@@ -278,9 +283,16 @@ class Model(object):
         assert len(test_input_tensor_set) > 0, "No test_inputs configured in " \
                                                 "model!"
 
-        assert test_input_tensor_set.intersection(set(
-            self.train_input_tensors.keys())) == test_input_tensor_set, \
-            "Model train_input_tensors and model test_input_tensors are out of sync"
+        # Unlike test outputs, it makes sense to ensure that all train inputs are used at test time. The vice versa
+        # needn't be true since in a language model, for decoding we need to be able to explicitly provide the hidden
+        # step from the previous decoding step.
+        # assert test_input_tensor_set.intersection(set(
+        #     self.train_input_tensors.keys())) == test_input_tensor_set, \
+        #     "Model train_input_tensors and model test_input_tensors are out of sync"
+        train_input_tensor_set = set(self.train_input_tensors.keys())
+        assert train_input_tensor_set.intersection(
+            test_input_tensor_set) == train_input_tensor_set, \
+            "All Model train_input_tensors must be used in model test_input_tensors are out of sync"
         if self.test_inputs_ordering is None:
             self.test_inputs_ordering = sorted(self.test_input_tensors.keys())
         else:
