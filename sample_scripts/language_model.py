@@ -228,7 +228,7 @@ class LangModel(Model):
         """
         if self.with_batch:
             self.test_hid = T.dmatrix("batch_test_hids")
-            self.test_c = T.dmatrix("batch_test_hids")
+            self.test_c = T.dmatrix("batch_test_cs")
         else:
             self.test_hid = T.dvector("sgd_test_hids")
             self.test_c = T.dvector("sgd_test_cs")
@@ -328,10 +328,12 @@ class LangModel(Model):
 vocab = ["w1","w2","w3"]
 w_emb_dim = 50
 lstm_hidden = 50
-learning_rate = 1.0
+learning_rate = 10.0
 n_epochs = 1000
 gate_activation = "sigmoid"
 init_type='glorot_uniform'
+
+use_batch = False
 
 
 my_lm = LangModel(vocab=vocab, w_emb_dim=w_emb_dim, lstm_hidden=lstm_hidden,
@@ -339,7 +341,7 @@ my_lm = LangModel(vocab=vocab, w_emb_dim=w_emb_dim, lstm_hidden=lstm_hidden,
                   peephole_f=True, peephole_i=True,
                   peephole_o=True, gate_activation=gate_activation,
                   init_type=init_type, use_biases=True,
-                  with_batch=False,
+                  with_batch=use_batch,
                   leak_slope=0.01, clip_threshold=5.0,
 
                   train_embeddings=True,
@@ -372,15 +374,24 @@ my_lm.build_train(embeddings=None,
                   rnd_seed=1234)
 my_lm.build_test()
 
-toy_inputs = np.array(
+if not use_batch:
+    toy_inputs = np.array(
                        [0,1], dtype=np.int32
                      )
+else:
+    toy_inputs = np.array(
+        [[0, 2, 1, 2], [0,1,1,2]], dtype=np.int32
+    )
 
-toy_outputs = np.array(
-
+if not use_batch:
+    toy_outputs = np.array(
                         [[0,1,0],[0,0,1]], dtype=np.int32
-
                       )
+else:
+    toy_outputs = np.array(
+        [ [[0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]] , [[0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]] ], dtype=np.int32
+    )
+
 
 my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs=toy_inputs, val_outputs=toy_outputs,
                   optimizer='batch_gradient_descent', n_epochs=n_epochs,

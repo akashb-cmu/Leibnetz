@@ -52,29 +52,36 @@ def categorical_crossentropy_loss(y_pred, y_actual, from_logits=False, **kwargs)
     eprint("Using categorical cross-entropy. Ensure y_actual is a matrix with each row  have appropriate class indicator"
           "variables for the corresponding input sample. Current implementation of cross entropy averages "
           "across samples. This should make the learning rate robust to the size of the dataset.")
-    assert y_actual.ndim == 2 and y_pred.ndim == 2, "Supplied gold and pred distributions for CCE are not appropriate!"
-    if from_logits:
-        # Output of a layer with un-normalized, possibility negative scores. This is simply a precaution to ensure
-        # compatibility with categorical cross-entropy.
-        y_pred = T.nnet.softmax(y_pred)
+    # assert y_actual.ndim == 2 and y_pred.ndim == 2, "Supplied gold and pred distributions for CCE are not appropriate!"
+    if y_actual.ndim == 2 and y_pred.ndim == 2:
+        if from_logits:
+            # Output of a layer with un-normalized, possibility negative scores. This is simply a precaution to ensure
+            # compatibility with categorical cross-entropy.
+            y_pred = T.nnet.softmax(y_pred)
+        else:
+            # scale preds so that the class probabs of each sample sum to 1. If final layer outputs have already been passed
+            # through softmax, this won't change the values since they sum to 1 already.
+            y_pred /= y_pred.sum(axis=-1, keepdims=True)
+        # Avoid numerical instability with epsilon clipping. Specifically, categorical cross-entropy uses the
+        # log(probability) associated with the true class. If output layer spits out 0-probabilities (as is the case with
+        # sparsemax (Martins, André FT, and Ramón Fernandez Astudillo. "From Softmax to Sparsemax: A Sparse Model of
+        # Attention and Multi-Label Classification." arXiv preprint arXiv:1602.02068 (2016)), we replace 0 probabilities
+        # with some epsilon value.
+        y_pred = T.clip(y_pred, epsilon, 1.0 - epsilon)
+
+        cross_ent = -T.mean(T.sum(y_actual * T.log(y_pred),axis=-1), axis=0)
+        # inner sum is over class labels
+        # outer average is over samples
+
+        # Out of the box theano implementation of categorical cross-entropy. It does not average over samples which makes
+        # the learning rate dependent on batch size when optimizing
+        # return T.nnet.categorical_crossentropy(y_pred, y_actual)
+    elif y_actual.ndim == 3 and y_pred.ndim == 3:
+        eprint("For 3 dimensional input, CCE assumes softmax has been applied")
+        y_pred = T.clip(y_pred, epsilon, 1.0 - epsilon)
+        cross_ent = -T.mean( T.mean( T.sum(y_actual * T.log(y_pred), axis=-1 ), axis=-1 ), axis=-1 )
     else:
-        # scale preds so that the class probabs of each sample sum to 1. If final layer outputs have already been passed
-        # through softmax, this won't change the values since they sum to 1 already.
-        y_pred /= y_pred.sum(axis=-1, keepdims=True)
-    # Avoid numerical instability with epsilon clipping. Specifically, categorical cross-entropy uses the
-    # log(probability) associated with the true class. If output layer spits out 0-probabilities (as is the case with
-    # sparsemax (Martins, André FT, and Ramón Fernandez Astudillo. "From Softmax to Sparsemax: A Sparse Model of
-    # Attention and Multi-Label Classification." arXiv preprint arXiv:1602.02068 (2016)), we replace 0 probabilities
-    # with some epsilon value.
-    y_pred = T.clip(y_pred, epsilon, 1.0 - epsilon)
-
-    cross_ent = -T.mean(T.sum(y_actual * T.log(y_pred),axis=-1), axis=0)
-    # inner sum is over class labels
-    # outer average is over samples
-
-    # Out of the box theano implementation of categorical cross-entropy. It does not average over samples which makes
-    # the learning rate dependent on batch size when optimizing
-    # return T.nnet.categorical_crossentropy(y_pred, y_actual)
+        assert False, "CCE can currently only accommodate up to 3 dimensional input!"
     return cross_ent
 
 
