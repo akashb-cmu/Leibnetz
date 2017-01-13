@@ -390,14 +390,13 @@ class LangModel(Model):
 
         word_sequence = " ".join([self.vocab[i] for i in decoded_sequence])
 
-        print("Word sequence is ", word_sequence)
-
         return word_sequence
 
 
 # Instantiating the language model
 
-vocab = ["w1","w2","w3"]
+# vocab = ["w1","w2","w3"]
+vocab = ["<s>","His","Her","name","is","Akash","Deepika","<\s>"]
 w_emb_dim = 50
 lstm_hidden = 50
 learning_rate = 10.0
@@ -405,7 +404,7 @@ n_epochs = 1000
 gate_activation = "sigmoid"
 init_type='glorot_uniform'
 
-use_batch = False
+use_batch = True
 
 
 my_lm = LangModel(vocab=vocab, w_emb_dim=w_emb_dim, lstm_hidden=lstm_hidden,
@@ -446,23 +445,44 @@ my_lm.build_train(embeddings=None,
                   rnd_seed=1234)
 my_lm.build_test()
 
+vocab = ["<s>","His","Her","name","is","Akash","Deepika","<\s>"]
+# first character must be <s> and last word must be <\s>
+
 if not use_batch:
-    toy_inputs = np.array(
-                       [0,1], dtype=np.int32
-                     )
+    toy_inputs = np.array([0,1,3,4,5,7], dtype=np.int32)
+    # toy_inputs = np.array(
+    #                    [0,1], dtype=np.int32
+    #                  )
 else:
     toy_inputs = np.array(
-        [[0, 2, 1, 2], [0,1,1,2]], dtype=np.int32
-    )
+                            [[0,1,3,4,5,7], [0,2,3,4,6,7]], dtype=np.int32
+                         )
+    # toy_inputs = np.array(
+    #     [[0, 2, 1, 2], [0,1,1,2]], dtype=np.int32
+    # )
 
 if not use_batch:
     toy_outputs = np.array(
-                        [[0,1,0],[0,0,1]], dtype=np.int32
-                      )
+                           [[0,1,0,0,0,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,1,0,0,0],[0,0,0,0,0,1,0,0], [0,0,0,0,0,0,0,1],
+                            [0, 0, 0, 0, 0, 0, 0, 1]],
+                           dtype=np.int32
+                          )
+    # toy_outputs = np.array(
+    #                     [[0,1,0],[0,0,1]], dtype=np.int32
+    #                   )
 else:
     toy_outputs = np.array(
-        [ [[0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]] , [[0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]] ], dtype=np.int32
+        [
+            [[0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]],
+            [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
+             [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]]
+        ],
+        dtype=np.int32
     )
+    # toy_outputs = np.array(
+    #     [ [[0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]] , [[0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]] ], dtype=np.int32
+    # )
 
 
 my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs=toy_inputs, val_outputs=toy_outputs,
@@ -472,7 +492,9 @@ my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs
 print("\n\nDone Training!\n\n")
 
 
+print("Sampled sentence is:")
 print(my_lm.apply_model(n_steps=10, mode='sample'))
+print("Greedy max decoding is:")
 print(my_lm.apply_model(n_steps=10, mode='max'))
 
 # TRY DECODING ALONG WITH BATCHING!
