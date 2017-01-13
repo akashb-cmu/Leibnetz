@@ -239,7 +239,8 @@ class LangModel(Model):
                                                                 init_hidden = self.test_hid, init_context = self.test_c,
                                                                 is_train=False)
 
-        self.test_predictions = T.argmax(self.pred_layer.link(input=self.lstm_test_hids, is_train=False))
+        # self.test_predictions = T.argmax(self.pred_layer.link(input=self.lstm_test_hids, is_train=False))
+        self.test_predictions = self.pred_layer.link(input=self.lstm_test_hids, is_train=False)
 
 
         # Registering test inputs
@@ -250,7 +251,7 @@ class LangModel(Model):
         # Registering test outputs
         self.add_test_output(output_name=self.lstm.layer_name+"_hids", test_output_tensor=self.lstm_test_hids)
         self.add_test_output(output_name=self.lstm.layer_name+"_contexts", test_output_tensor=self.lstm_test_cs)
-        self.add_test_output(output_name=self.pred_layer, test_output_tensor=self.test_predictions)
+        self.add_test_output(output_name=self.pred_layer.layer_name, test_output_tensor=self.test_predictions)
 
         ordered_test_inputs = self.get_ordered_test_input_tensors()
         ordered_test_outputs = self.get_ordered_test_output_tensors()
@@ -316,11 +317,82 @@ class LangModel(Model):
         self.train_fn = batch_optimizer.train_model
         self.optimizer = batch_optimizer
 
-    def validate(self):
-        pass
+    # def validate(self):
+    #     pass
 
-    def apply_model(self):
-        pass
+    def apply_model(self, n_steps=10, mode='sample'):
+        if self.with_batch:
+            ip = np.array(
+                [
+                    [0]
+                ] , dtype=np.int32
+            )
+            hidden = np.array(
+                [
+                    np.zeros(shape=(self.lstm_hidden,))
+                ]
+            )
+            context = np.array(
+                [
+                    np.zeros(shape=(self.lstm_hidden,))
+                ]
+            )
+        else:
+            ip = np.array(
+                [0], dtype=np.int32
+            )
+            hidden =  np.zeros(shape=(self.lstm_hidden,))
+            context =  np.zeros(shape=(self.lstm_hidden,))
+
+        step_output = {
+                        self.inputs.name  : ip,
+                        self.test_hid.name: hidden,
+                        self.test_c.name  : context
+                      }
+
+        decoded_sequence = []
+
+        for i in range(n_steps):
+            output = self.get_ordered_test_output_data(self.model_test_fn(*self.get_ordered_test_input_data({
+                self.inputs.name: step_output[self.inputs.name],
+                self.test_hid.name   : step_output[self.test_hid.name],
+                self.test_c.name    : step_output[self.test_c.name]
+            })))
+
+            if mode == 'max':
+                pred_id = np.argmax(output[self.pred_layer.layer_name], axis=-1)
+                decoded_sequence.append(pred_id)
+
+                if pred_id == len(vocab) - 1:
+                    break
+
+                step_output[self.inputs.name] = np.array(
+                                                            pred_id, dtype=np.int32
+                                                            # [pred_id] if self.with_batch else pred_id, dtype=np.int32
+                                                        )
+            elif mode == "sample":
+                pred_vec = np.random.multinomial(1,output[self.pred_layer.layer_name][-1][-1] if self.with_batch
+                                                  else output[self.pred_layer.layer_name][-1] , size=None)
+                pred_id = np.argmax(pred_vec)
+                decoded_sequence.append(pred_id)
+
+                if pred_id == len(vocab) - 1:
+                    break
+
+                step_output[self.inputs.name] = np.array(
+                                                                [[pred_id]] if self.with_batch else [pred_id], dtype=np.int32
+                                                             )
+
+            step_output[self.test_hid.name] = output[self.lstm.layer_name + "_hids"][:,-1, :] if self.with_batch \
+                                                else np.array(output[self.lstm.layer_name + "_hids"][-1])
+            step_output[self.test_c.name] = output[self.lstm.layer_name + "_contexts"][:, -1, :] if self.with_batch \
+                                                else np.array(output[self.lstm.layer_name + "_contexts"][-1])
+
+        word_sequence = " ".join([self.vocab[i] for i in decoded_sequence])
+
+        print("Word sequence is ", word_sequence)
+
+        return word_sequence
 
 
 # Instantiating the language model
@@ -397,4 +469,11 @@ my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs
                   optimizer='batch_gradient_descent', n_epochs=n_epochs,
                   clip_threshold=None, rnd_seed=np.random.randint(low=1, high=1000000))
 
-print("Done!")
+print("\n\nDone Training!\n\n")
+
+
+print(my_lm.apply_model(n_steps=10, mode='sample'))
+print(my_lm.apply_model(n_steps=10, mode='max'))
+
+# TRY DECODING ALONG WITH BATCHING!
+# Try the example with male and female name
