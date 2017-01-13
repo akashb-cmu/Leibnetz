@@ -71,20 +71,27 @@ ip_tensor = T.dtensor3("sgd_ip");
 
 identity_mat = np.eye(ip_dim, hidden_dim)
 
-rnn = RNN(name="sgd_rnn", hidden_dim=hidden_dim, input_dim=ip_dim, activation = 'linear', init_type = 'one',
-          weights_ih = 2*identity_mat, weights_hh = 3*identity_mat,biases_h = np.ones(shape=(hidden_dim,)),
-          W_ih_regularizer = None, W_hh_regularizer = None,
-          W_ih_constraint = None, W_hh_constraint = None, b_h_regularizer = None, b_h_constraint = None,
-          use_bias_h = True, rnd_seed = None, trainable = True, with_batch=True)
+# rnn = RNN(name="sgd_rnn", hidden_dim=hidden_dim, input_dim=ip_dim, activation = 'linear', init_type = 'one',
+#           weights_ih = 2*identity_mat, weights_hh = 3*identity_mat,biases_h = np.ones(shape=(hidden_dim,)),
+#           W_ih_regularizer = None, W_hh_regularizer = None,
+#           W_ih_constraint = None, W_hh_constraint = None, b_h_regularizer = None, b_h_constraint = None,
+#           use_bias_h = True, rnd_seed = None, trainable = True, with_batch=True)
+
+rnn = RNN(name="sgd_rnn", hidden_dim=hidden_dim, input_dim=ip_dim, activation='relu', init_type='one',
+          weights_ih=2 * identity_mat, weights_hh=3 * identity_mat, biases_h=np.ones(shape=(hidden_dim,)),
+          W_ih_regularizer=None, W_hh_regularizer=None, leak_slope=0.01, clip_threshold=None,
+          W_ih_constraint=None, W_hh_constraint=None, b_h_regularizer=None, b_h_constraint=None,
+          use_bias_h=True, rnd_seed=None, trainable=True, with_batch=True)
+
 # test_op = rnn.link(ip_tensor, init_hidden=init_state, is_train=False)
 test_op = rnn.link(ip_tensor, init_hidden=None, is_train=False)
 
 # get_op = theano.function(inputs=[ip_tensor, init_state],outputs=[test_op])
 get_op = theano.function(inputs=[ip_tensor],outputs=[test_op])
 
-rnn2 = RNN(name="sgd_rnn_2", hidden_dim=hidden_dim, input_dim=ip_dim, activation = 'linear', init_type = 'one',
+rnn2 = RNN(name="sgd_rnn_2", hidden_dim=hidden_dim, input_dim=ip_dim, activation = 'relu', init_type = 'one',
            weights_ih = identity_mat, weights_hh = identity_mat,biases_h = np.ones(shape=(hidden_dim,)),
-           W_ih_regularizer = None, W_hh_regularizer = None,
+           W_ih_regularizer = None, W_hh_regularizer = None, leak_slope=0.01, clip_threshold=5.0,
            W_ih_constraint = None, W_hh_constraint = None, b_h_regularizer = None, b_h_constraint = None,
            use_bias_h = True, rnd_seed = None, trainable = True, with_batch=True)
 
@@ -109,3 +116,7 @@ print("\n\nBatch test ip2")
 print(get_op2(test_ip_batch))
 
 # Try with relu
+
+# FIX THE intiialization routine and check that constraints are correctly enforced
+# Also try RNN without the bias terms
+# Try with different dimensions for hidden, input
