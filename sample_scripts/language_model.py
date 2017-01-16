@@ -3,6 +3,7 @@ import theano
 import theano.tensor as T
 import numpy as np
 import cPickle
+from data_utils import read_lm_data
 
 sys.path.append("/home/akashb/Desktop/Acads/Summer/Leibnetz/Leibnetz")
 sys.path.append("/home/akashb/Desktop/Acads/Summer/Leibnetz/Leibnetz/datasets")
@@ -320,11 +321,13 @@ class LangModel(Model):
     # def validate(self):
     #     pass
 
-    def apply_model(self, n_steps=10, mode='sample'):
+    def apply_model(self, n_steps=10, mode='sample', first_word=0):
+        assert (first_word is None or isinstance(first_word, int)), "Supplied first word must be an index into the " \
+                "vocabulary or must be unspecified!"
         if self.with_batch:
             ip = np.array(
                 [
-                    [0]
+                    [first_word]
                 ] , dtype=np.int32
             )
             hidden = np.array(
@@ -339,7 +342,7 @@ class LangModel(Model):
             )
         else:
             ip = np.array(
-                [0], dtype=np.int32
+                [first_word], dtype=np.int32
             )
             hidden =  np.zeros(shape=(self.lstm_hidden,))
             context =  np.zeros(shape=(self.lstm_hidden,))
@@ -395,16 +398,19 @@ class LangModel(Model):
 
 # Instantiating the language model
 
-# vocab = ["w1","w2","w3"]
-vocab = ["<s>","His","Her","name","is","Akash","Deepika","<\s>"]
+# vocab = ["<s>","His","Her","name","is","Akash","Deepika","<\s>"]
+
 w_emb_dim = 50
 lstm_hidden = 50
-learning_rate = 10.0
 n_epochs = 1000
 gate_activation = "sigmoid"
 init_type='glorot_uniform'
 
 use_batch = True
+learning_rate = 10.0 if not use_batch else 1.0
+vocab_dict, inv_vocab_dict, composite_data = read_lm_data("./lm_text_data.txt", retain_seq_len_batch=use_batch)
+vocab = [inv_vocab_dict[w_index] for w_index in range(len(vocab_dict.keys()))]
+# First vocab word is expected to be the start word while the last one is the end word
 
 
 my_lm = LangModel(vocab=vocab, w_emb_dim=w_emb_dim, lstm_hidden=lstm_hidden,
@@ -445,57 +451,116 @@ my_lm.build_train(embeddings=None,
                   rnd_seed=1234)
 my_lm.build_test()
 
-vocab = ["<s>","His","Her","name","is","Akash","Deepika","<\s>"]
-# first character must be <s> and last word must be <\s>
+if not use_batch:
+    # toy_inputs = np.array([0,1,3,4,5,7], dtype=np.int32)
+    # toy_inputs = np.array(
+    #                         [[0, 1, 3, 4, 5, 7],
+    #                          [0, 2, 3, 4, 6, 7]]
+    #                         , dtype=np.int32
+    #                     )
+    toy_inputs = [np.array(composite_data_item[0], dtype=np.int32) for composite_data_item in composite_data]
+else:
+    # toy_inputs = np.array(
+    #                         [[0,1,3,4,5,7],
+    #                          [0,2,3,4,6,7],
+    #                           [0,2,3,4,6,7],
+    #                           [0,2,3,4,6,7]]
+    #     , dtype=np.int32
+    #                      )
+    toy_inputs = []
+    for seq_len in composite_data.keys():
+        toy_inputs.append(np.array([np.array(composite_item[0], dtype=np.int32)
+                                                for composite_item in composite_data[seq_len]],
+                                   dtype=np.int32))
+    # toy_inputs = np.array(toy_inputs, dtype=np.int32)
 
 if not use_batch:
-    toy_inputs = np.array([0,1,3,4,5,7], dtype=np.int32)
-    # toy_inputs = np.array(
-    #                    [0,1], dtype=np.int32
-    #                  )
+    # toy_outputs = np.array(
+    #         [
+    #             [[0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0],
+    #              [0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 1]],
+    #             [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
+    #              [0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 1]]
+    #         ],
+    #         dtype=np.int32
+    #     )
+    toy_outputs = [np.array(composite_data_item[1], dtype=np.int32) for composite_data_item in composite_data]
 else:
-    toy_inputs = np.array(
-                            [[0,1,3,4,5,7], [0,2,3,4,6,7]], dtype=np.int32
-                         )
-    # toy_inputs = np.array(
-    #     [[0, 2, 1, 2], [0,1,1,2]], dtype=np.int32
+    # toy_outputs = np.array(
+    #     [
+    #         [[0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0],
+    #          [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]],
+    #         [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
+    #          [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]],
+    #         [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
+    #          [0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 1]],
+    #         [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
+    #          [0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 1]]
+    #     ],
+    #     dtype=np.int32
     # )
 
-if not use_batch:
-    toy_outputs = np.array(
-                           [[0,1,0,0,0,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,1,0,0,0],[0,0,0,0,0,1,0,0], [0,0,0,0,0,0,0,1],
-                            [0, 0, 0, 0, 0, 0, 0, 1]],
-                           dtype=np.int32
-                          )
-    # toy_outputs = np.array(
-    #                     [[0,1,0],[0,0,1]], dtype=np.int32
-    #                   )
+    toy_outputs = []
+    for seq_len in composite_data.keys():
+        toy_outputs.append(np.array([np.array(composite_item[1], dtype=np.int32)
+                                                for composite_item in composite_data[seq_len]],
+                                    dtype=np.int32))
+    # toy_outputs = np.array(toy_outputs, dtype=np.int32)
+
+
+# Note: There is a problem when you you use any number o finputs other than 2
+
+assert len(toy_inputs) == len(toy_outputs), "Mismatch between outputs and inputs!"
+
+N = len(toy_inputs)
+
+shuffle_vec = range(len(toy_inputs))
+
+if(use_batch):
+    # my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs=toy_inputs,
+    #                   val_outputs=toy_outputs,
+    #                   optimizer='batch_gradient_descent', n_epochs=n_epochs,
+    #                   clip_threshold=None, rnd_seed=np.random.randint(low=1, high=1000000))
+    for epoch in range(n_epochs):
+        print("Epoch %d"%(epoch))
+        np.random.shuffle(shuffle_vec)
+        for index_ind, index in enumerate(shuffle_vec):
+            my_lm.train_model(train_inputs=toy_inputs[index], train_outputs=toy_outputs[index],
+                              val_inputs=toy_inputs[shuffle_vec[(index_ind+1)%N]],
+                              val_outputs=toy_outputs[shuffle_vec[(index_ind+1)%N]],
+                          optimizer='batch_gradient_descent', n_epochs=1,
+                          clip_threshold=None, rnd_seed=np.random.randint(low=1, high=1000000))
 else:
-    toy_outputs = np.array(
-        [
-            [[0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]],
-            [[0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0],
-             [0, 0, 0, 0, 0, 0, 0, 1], [0,0,0,0,0,0,0,1]]
-        ],
-        dtype=np.int32
-    )
-    # toy_outputs = np.array(
-    #     [ [[0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]] , [[0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]] ], dtype=np.int32
-    # )
+    for epoch in range(n_epochs):
+        np.random.shuffle(shuffle_vec)
+        print("Epoch %d"%(epoch))
+        # for index, toy_input in enumerate(toy_inputs):
+        for index_ind, index in enumerate(shuffle_vec):
+            toy_input = toy_inputs[index]
+            toy_output = toy_outputs[index]
+            my_lm.train_model(train_inputs=toy_input, train_outputs=toy_output,
+                              val_inputs=toy_inputs[shuffle_vec[(index_ind+1)%N]],
+                              val_outputs=toy_outputs[shuffle_vec[(index+1)%N]],
+                              optimizer='batch_gradient_descent', n_epochs=1,
+                              clip_threshold=None, rnd_seed=np.random.randint(low=1, high=1000000))
 
 
-my_lm.train_model(train_inputs=toy_inputs, train_outputs=toy_outputs, val_inputs=toy_inputs, val_outputs=toy_outputs,
-                  optimizer='batch_gradient_descent', n_epochs=n_epochs,
-                  clip_threshold=None, rnd_seed=np.random.randint(low=1, high=1000000))
 
 print("\n\nDone Training!\n\n")
 
+print("Enter a start word among " , vocab_dict.keys())
+word = raw_input("Enter first word:")
+while(word is not None):
+    assert vocab_dict.has_key(word), "No such word in vocab!"
+    print("Sampled sentence starting with " + word + " is:")
+    print(my_lm.apply_model(n_steps=10, mode='sample', first_word=vocab_dict[word]))
+    print("Greedy max decoding is:")
+    print(my_lm.apply_model(n_steps=10, mode='max', first_word=vocab_dict[word]))
+    print("Enter a start word among ", vocab_dict.keys())
+    word = raw_input("Enter next word or # to end")
+    if word == "#":
+        word = None
 
-print("Sampled sentence is:")
-print(my_lm.apply_model(n_steps=10, mode='sample'))
-print("Greedy max decoding is:")
-print(my_lm.apply_model(n_steps=10, mode='max'))
-
-# TRY DECODING ALONG WITH BATCHING!
-# Try the example with male and female name
+# TO DO:
+# 1. Fix the batching issue! Even when restricting to a single train sample, result of SGD is not replicated!
+# 2. Implement parallel samplers for n start words, i.e. batch mode sampling!
