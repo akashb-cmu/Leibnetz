@@ -38,14 +38,21 @@ class Component(object):
         # This method returns a dictionary mapping param to gradient(param)
         # gradients = dict(zip(self.trainable_params.values(), theano.grad(cost=cost,
         #                                                                wrt=self.trainable_params.values())))
+        safe_grads = []
+        associated_params = []
+        for param in self.trainable_params.values():
+            try:
+                pgrad = theano.grad(cost=cost, wrt=param)
+                safe_grads.append(pgrad)
+                associated_params.append(param)
+            except theano.gradient.DisconnectedInputError as e:
+                pass # Gradients for disconnected parameters shouldn't be considered
         if clip_threshold is None:
-            gradients = dict( zip( self.trainable_params.values(),
-                                   [theano.grad(cost=cost, wrt=param) for param in self.trainable_params.values()] ) )
+            gradients = dict( zip( associated_params, safe_grads ) )
         else: # clip the gradients before updates are applied!
             assert clip_threshold > 0., "Clip threshold MUST be a positive value for component " + self.component_name
-            gradients = dict(zip(self.trainable_params.values(),
-                                 [theano.grad(cost=cost, wrt=param).clip(a_min=-clip_threshold,a_max=clip_threshold)
-                                                         for param in self.trainable_params.values()]))
+            safe_grads = [g.clip(a_min=-clip_threshold,a_max=clip_threshold) for g in safe_grads]
+            gradients = dict(zip(associated_params, safe_grads))
         return gradients
 
     def apply_constraints(self, updates_dict, component_name=None):
@@ -289,10 +296,10 @@ class Model(object):
         # assert test_input_tensor_set.intersection(set(
         #     self.train_input_tensors.keys())) == test_input_tensor_set, \
         #     "Model train_input_tensors and model test_input_tensors are out of sync"
-        train_input_tensor_set = set(self.train_input_tensors.keys())
-        assert train_input_tensor_set.intersection(
-            test_input_tensor_set) == train_input_tensor_set, \
-            "All Model train_input_tensors must be used in model test_input_tensors are out of sync"
+        # train_input_tensor_set = set(self.train_input_tensors.keys())
+        # assert train_input_tensor_set.intersection(
+        #     test_input_tensor_set) == train_input_tensor_set, \
+        #     "All Model train_input_tensors must be used in model test_input_tensors are out of sync"
         if self.test_inputs_ordering is None:
             self.test_inputs_ordering = sorted(self.test_input_tensors.keys())
         else:
